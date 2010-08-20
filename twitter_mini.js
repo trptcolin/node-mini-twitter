@@ -3,7 +3,7 @@ var sys = require('sys');
 var fs = require('fs');
 require('underscore');
 
-var encodeCreds = function(creds) {
+exports.encodeCredentials = function(creds) {
   var base64_encode = require('base64').encode;
   var Buffer = require('buffer').Buffer;
   var buf = new Buffer(creds);
@@ -12,7 +12,7 @@ var encodeCreds = function(creds) {
 
 var mussedCreds = fs.readFileSync(".creds", "utf8");
 
-var Twitter = {
+exports.TwitterApi = {
   creds: mussedCreds.substring(0, mussedCreds.length - 1),
 
   protocol: 'http',
@@ -21,24 +21,31 @@ var Twitter = {
   timelineUrl: "/1/statuses/friends_timeline.json",
   updateUrl: "/1/statuses/update.json",
 
+  client: http.createClient(80, this.apiHost),
+
+  headers: function() {
+    return {'host': this.apiHost,
+            'Authorization': 'Basic ' + exports.encodeCredentials(this.creds)}
+  },
+
   makeRequest: function(method, url, params, callback) {
-    var client = http.createClient(80, this.apiHost);
-    var headers = {'host': this.apiHost,
-                   'Authorization': 'Basic ' + encodeCreds(this.creds)};
-    var request = client.request(method, url, headers);
+    var request = this.client.request(method, url, this.headers());
     request.write(params);
     request.end();
     callback(request);
   },
 
+  // TODO: test
   get: function(url, callback) {
     this.makeRequest("GET", url, [], callback);
   },
 
+  // TODO: test
   post: function(url, params, callback) {
     this.makeRequest("POST", url, params, callback);
   },
 
+  // TODO: test
   responder: function(request, onComplete) {
     var chunks = "";
     request.on('response', function (response) {
@@ -53,6 +60,7 @@ var Twitter = {
     });
   },
 
+  // TODO: test
   getTimeline: function(onComplete) {
     var that = this;
     this.get(this.timelineUrl, function(request) {
@@ -60,6 +68,7 @@ var Twitter = {
     });
   },
 
+  // TODO: test
   postUpdate: function(params, onComplete) {
     var that = this;
     this.post(this.updateUrl, params, function(request) {
@@ -67,10 +76,12 @@ var Twitter = {
     });
   },
 
+  // TODO: test
   linkForUser: function(screenName, text) {
     return "<a href='http://twitter.com/" + screenName + "'>" + text + "</a>";
   },
 
+  // TODO: test
   htmlForTweet: function(tweet) {
     var user = tweet["user"];
     var screenName = user["screen_name"];
@@ -81,7 +92,8 @@ var Twitter = {
   }
 };
 
-var MiniTwitter = {
+exports.MiniTwitter = {
+  // TODO: move into separate view file (node template?)
   htmlFor: function(content) {
     var css = "* {padding: 0; margin: 0;}" +
               "html {background-color: #FAFAFA;}" +
@@ -99,35 +111,39 @@ var MiniTwitter = {
     return html;
   },
 
+  // TODO: test
   index: function (res) {
+    var that = this;
     var updateForm = '<form action="/update"' +
                      ' class="status-update-form" id="status_update_form" method="post">' +
                      '<textarea cols="40" rows="3" id="status" name="status"></textarea><br />' +
                      '<input type="submit" value="Mini-Tweet it!" />' +
                      '</form>';
 
-    Twitter.getTimeline(function(content) {
+    exports.TwitterApi.getTimeline(function(content) {
       var data = _.map(JSON.parse(content), function(tweet) {
-        return Twitter.htmlForTweet(tweet);
+        return exports.TwitterApi.htmlForTweet(tweet);
       });
 
-      res.end(MiniTwitter.htmlFor(updateForm + data.join("")));
+      res.end(that.htmlFor(updateForm + data.join("")));
     });
   },
 
+  // TODO: test
   update: function (req, data, res) {
     var that = this;
-    Twitter.postUpdate(data, function(content) {
+    exports.TwitterApi.postUpdate(data, function(content) {
       that.index(res);
     });
-  }
+  },
 };
 
-http.createServer(function (req, res) {
+// TODO: test
+exports.serverResponder = function (req, res) {
   res.writeHead(200, {'Content-Type': 'text/html'});
 
   if (req.url === "/") {
-    MiniTwitter.index(res);
+    exports.MiniTwitter.index(res);
   }
   else if (req.url === "/update") {
     var chunks = "";
@@ -137,14 +153,11 @@ http.createServer(function (req, res) {
     });
 
     req.on('end', function() {
-      MiniTwitter.update(req, chunks, res);
+      exports.MiniTwitter.update(req, chunks, res);
     });
   }
   else {
     res.end("BOGUS");
   }
-
-}).listen(8124, "127.0.0.1");
-
-console.log('Server running at http://127.0.0.1:8124/');
+};
 
